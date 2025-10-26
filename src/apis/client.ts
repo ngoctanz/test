@@ -102,18 +102,19 @@ export async function apiFetch<T = any>(
   const url = `${API_BASE}${path}${buildQuery(query)}`;
 
   const makeRequest = (token?: string): Promise<Response> => {
-    const headers: HeadersInit = {
+    // ✅ Ép kiểu headers về Record<string, string> để TypeScript hiểu rõ
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...rest.headers,
+      ...(rest.headers as Record<string, string>),
     };
 
-    // Thêm Authorization header nếu có token (cho iPhone)
+    // ✅ Thêm Authorization header nếu có token
     if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
 
     return fetch(url, {
-      credentials: "include", // Cookies cho desktop
+      credentials: "include",
       ...rest,
       headers,
     });
