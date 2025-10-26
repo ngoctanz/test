@@ -24,7 +24,7 @@ function buildQuery(q?: Record<string, any>): string {
 async function refreshToken(): Promise<void> {
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: "POST",
-    credentials: "include",
+    credentials: "include", // Gửi cookies
   });
 
   if (!res.ok) {
@@ -60,9 +60,10 @@ export async function apiFetch<T = any>(
 
   const makeRequest = (): Promise<Response> => {
     return fetch(url, {
-      credentials: "include",
+      credentials: "include", // BẮT BUỘC để gửi và nhận cookies
       ...rest,
       headers: {
+        "Content-Type": "application/json",
         ...rest.headers,
       },
     });
@@ -70,14 +71,52 @@ export async function apiFetch<T = any>(
 
   let res = await makeRequest();
 
+  // Auto refresh token nếu 401
   if (res.status === 401 && !path.includes("/auth/refresh")) {
     try {
       await refreshToken();
-      res = await makeRequest();
+      res = await makeRequest(); // Retry request
     } catch (refreshError) {
-      console.warn("Refresh token failed or missing:");
+      console.warn("Refresh token failed:", refreshError);
+      // Có thể redirect về login page ở đây
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw refreshError;
     }
   }
 
   return handleResponse<T>(res);
+}
+
+// Hàm logout riêng với fallback xóa cookies
+export async function logout(): Promise<void> {
+  try {
+    await apiFetch("/auth/logout", { method: "POST" });
+  } catch (error) {
+    console.error("Logout API failed:", error);
+  }
+}
+
+// Hàm login
+export async function login(email: string, password: string) {
+  return apiFetch("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+// Hàm register
+export async function register(email: string, password: string) {
+  return apiFetch("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+// Hàm get profile
+export async function getProfile() {
+  return apiFetch("/auth/profile", {
+    method: "GET",
+  });
 }
