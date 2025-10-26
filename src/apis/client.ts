@@ -3,6 +3,7 @@ import {
   getLocalAccessToken,
   saveTokensToLocal,
   clearLocalTokens,
+  getLocalRefreshToken,
 } from "@/lib/auth.client";
 
 export const API_BASE =
@@ -43,9 +44,18 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 async function refreshToken(): Promise<void> {
+  const localRefreshToken = getLocalRefreshToken();
+  const headers: Record<string, string> = {};
+
+  if (localRefreshToken) {
+    console.log("[Auth] Refresh via header:", localRefreshToken);
+    headers["Authorization"] = `Bearer ${localRefreshToken}`;
+  }
+
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: "POST",
     credentials: "include",
+    headers,
   });
 
   if (!res.ok) throw new Error("No valid refresh token");

@@ -1,5 +1,3 @@
-// 🔐 auth.client.ts — quản lý token hybrid (cookie + localStorage)
-
 export const TOKEN_KEYS = {
   ACCESS: "accessToken",
   REFRESH: "refreshToken",
