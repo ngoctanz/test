@@ -32,12 +32,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (err: any) {
       console.warn("❌ Fetch profile failed:", err);
 
-      // 🧠 nếu cookie fail (401) mà vẫn có token local => thử lại
+      // nếu cookie fail (401) mà vẫn có token local => thử lại
       const localToken = localStorage.getItem("accessToken");
       if (err?.status === 401 && localToken) {
-        console.log("🔄 Retrying fetchUserProfile with local token...");
         try {
-          const res2 = await authApi.profile(); // apiFetch() tự thêm Bearer
+          const res2 = await authApi.profile();
           const profile2 = res2?.data || null;
           setUser(profile2);
           return profile2;
@@ -66,12 +65,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         const res = await authApi.login({ email, password });
 
-        // ✅ Nếu server trả tokens → lưu fallback (cho Safari iOS)
         if (res.data?.tokens) {
           saveTokensToLocal(res.data.tokens);
         }
 
-        // ✅ Sau khi lưu xong → refetch profile
+        // Sau khi lưu xong → refetch profile
         const userData = await fetchUserProfile();
 
         if (userData) {
@@ -96,12 +94,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         const res = await authApi.register({ email, password });
 
-        // ✅ Lưu token fallback nếu backend trả
         if (res.data?.tokens) {
           saveTokensToLocal(res.data.tokens);
         }
 
-        // ✅ Sau khi đăng ký thì đăng nhập luôn
         await login(email, password);
       } catch (error) {
         console.error("Register error:", error);
@@ -116,15 +112,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
-      // ✅ Gọi API logout để xóa cookies backend
+      // Gọi API logout để xóa cookies backend
       await authApi.logout();
     } catch {
       /* ignore */
     } finally {
-      // ✅ Xóa token local fallback
+      // Xóa token local fallback
       clearLocalTokens();
 
-      // ✅ Xóa user state
       setUser(null);
       router.replace("/login");
       setIsLoading(false);
