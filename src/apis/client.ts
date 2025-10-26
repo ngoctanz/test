@@ -3,13 +3,38 @@ export const API_BASE =
 
 export type FetchOptions = RequestInit & { query?: Record<string, any> };
 
+// ==================== TOKEN STORAGE ====================
+const TokenStorage = {
+  getAccessToken(): string | null {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("accessToken");
+  },
+
+  getRefreshToken(): string | null {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("refreshToken");
+  },
+
+  setTokens(accessToken: string, refreshToken: string): void {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("accessToken", accessToken);
+    localStorage.setItem("refreshToken", refreshToken);
+  },
+
+  clearTokens(): void {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+  },
+};
+
+// ==================== HELPERS ====================
 function buildQuery(q?: Record<string, any>): string {
   if (!q) return "";
 
   const params = new URLSearchParams();
   Object.entries(q).forEach(([k, v]) => {
     if (v == null) return;
-
     if (Array.isArray(v)) {
       v.forEach((item) => params.append(k, String(item)));
     } else {
@@ -21,22 +46,8 @@ function buildQuery(q?: Record<string, any>): string {
   return s ? `?${s}` : "";
 }
 
-async function refreshToken(): Promise<void> {
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
-    method: "POST",
-    credentials: "include", // Gửi cookies
-  });
-
-  if (!res.ok) {
-    throw new Error("No valid refresh token");
-  }
-
-  await res.json();
-}
-
 async function handleResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get("content-type") || "";
-
   const body = contentType.includes("application/json")
     ? await res.json()
     : await res.text();
@@ -51,6 +62,38 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return body as T;
 }
 
+// ==================== REFRESH TOKEN ====================
+async function refreshToken(): Promise<string | null> {
+  const storedRefreshToken = TokenStorage.getRefreshToken();
+
+  if (!storedRefreshToken) {
+    throw new Error("No refresh token available");
+  }
+
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken: storedRefreshToken }),
+  });
+
+  if (!res.ok) {
+    TokenStorage.clearTokens();
+    throw new Error("Refresh token failed");
+  }
+
+  const data = await handleResponse<any>(res);
+
+  // Lưu accessToken mới
+  if (data.data?.accessToken) {
+    TokenStorage.setTokens(data.data.accessToken, storedRefreshToken);
+    return data.data.accessToken;
+  }
+
+  return null;
+}
+
+// ==================== API FETCH ====================
 export async function apiFetch<T = any>(
   path: string,
   options: FetchOptions = {}
@@ -58,26 +101,39 @@ export async function apiFetch<T = any>(
   const { query, ...rest } = options;
   const url = `${API_BASE}${path}${buildQuery(query)}`;
 
-  const makeRequest = (): Promise<Response> => {
+  const makeRequest = (token?: string): Promise<Response> => {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      ...rest.headers,
+    };
+
+    // Thêm Authorization header nếu có token (cho iPhone)
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     return fetch(url, {
-      credentials: "include", // BẮT BUỘC để gửi và nhận cookies
+      credentials: "include", // Cookies cho desktop
       ...rest,
-      headers: {
-        "Content-Type": "application/json",
-        ...rest.headers,
-      },
+      headers,
     });
   };
 
-  let res = await makeRequest();
+  // Lấy token từ localStorage
+  const storedToken = TokenStorage.getAccessToken();
+  let res = await makeRequest(storedToken || undefined);
 
-  // Auto refresh token nếu 401
+  // Auto refresh nếu 401
   if (res.status === 401 && !path.includes("/auth/refresh")) {
     try {
-      await refreshToken();
-      res = await makeRequest(); // Retry request
+      const newToken = await refreshToken();
+      res = await makeRequest(newToken || undefined);
     } catch (refreshError) {
-      console.warn("Refresh token failed:", refreshError);
+      console.warn("Refresh failed:", refreshError);
+      TokenStorage.clearTokens();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
       throw refreshError;
     }
   }
@@ -85,39 +141,62 @@ export async function apiFetch<T = any>(
   return handleResponse<T>(res);
 }
 
-// Hàm logout riêng với fallback xóa cookies
+// ==================== AUTH FUNCTIONS ====================
+export async function login(email: string, password: string) {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await handleResponse<any>(res);
+
+  // Lưu tokens vào localStorage (cho iPhone)
+  if (data.data?.tokens) {
+    TokenStorage.setTokens(
+      data.data.tokens.accessToken,
+      data.data.tokens.refreshToken
+    );
+  }
+
+  return data;
+}
+
+export async function register(email: string, password: string) {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await handleResponse<any>(res);
+
+  // Lưu tokens vào localStorage
+  if (data.data?.tokens) {
+    TokenStorage.setTokens(
+      data.data.tokens.accessToken,
+      data.data.tokens.refreshToken
+    );
+  }
+
+  return data;
+}
+
 export async function logout(): Promise<void> {
   try {
     await apiFetch("/auth/logout", { method: "POST" });
   } catch (error) {
-    console.error("Logout API failed:", error);
+    console.error("Logout failed:", error);
   } finally {
-    // Redirect về login
+    TokenStorage.clearTokens();
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
   }
 }
 
-// Hàm login
-export async function login(email: string, password: string) {
-  return apiFetch("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
-
-// Hàm register
-export async function register(email: string, password: string) {
-  return apiFetch("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
-
-// Hàm get profile
 export async function getProfile() {
-  return apiFetch("/auth/profile", {
-    method: "GET",
-  });
+  return apiFetch("/auth/profile", { method: "GET" });
 }
