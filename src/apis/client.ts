@@ -48,8 +48,10 @@ async function refreshToken(): Promise<void> {
   const headers: Record<string, string> = {};
 
   if (localRefreshToken) {
-    console.log("[Auth] Refresh via header:", localRefreshToken);
     headers["Authorization"] = `Bearer ${localRefreshToken}`;
+    console.log("[Auth] Refresh using header (no cookie)");
+  } else {
+    console.log("[Auth] Refresh using cookie");
   }
 
   const res = await fetch(`${API_BASE}/auth/refresh`, {
