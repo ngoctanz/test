@@ -78,10 +78,6 @@ export async function apiFetch<T = any>(
       res = await makeRequest(); // Retry request
     } catch (refreshError) {
       console.warn("Refresh token failed:", refreshError);
-      // Có thể redirect về login page ở đây
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
-      }
       throw refreshError;
     }
   }
@@ -95,6 +91,11 @@ export async function logout(): Promise<void> {
     await apiFetch("/auth/logout", { method: "POST" });
   } catch (error) {
     console.error("Logout API failed:", error);
+  } finally {
+    // Redirect về login
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
   }
 }
 
