@@ -58,16 +58,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     })();
   }, [fetchUserProfile]);
 
-  /** ====================== AUTO REDIRECT BASED ON ROLE ====================== */
-  useEffect(() => {
-    console.log("Checking auto-redirect based on role...");
-    if (isLoading || !user) return;
-    const currentPath = window.location.pathname;
-    if (user.role === "ADMIN" && currentPath === "/") {
-      router.replace("/admin");
-    }
-  }, [user, isLoading, router]);
-
   /** ====================== LOGIN ====================== */
   const login = useCallback(
     async (email: string, password: string): Promise<void> => {

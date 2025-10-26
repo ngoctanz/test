@@ -19,93 +19,98 @@ export function useAccountForm(
   );
   const [isLoading, setIsLoading] = useState(false);
 
+  /** =============================================
+   * 🔁 Reset dữ liệu khi mở dialog
+   * ============================================= */
   useEffect(() => {
-    if (account && open) {
-      setFormData(account);
-    } else if (!account && open) {
-      setFormData(getInitialFormData());
+    if (open) {
+      setFormData(account ? account : getInitialFormData());
     }
   }, [account, open]);
 
+  /** =============================================
+   * 🖼️ Upload ảnh bìa chính
+   * ============================================= */
   const handleCoverImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (account) {
-          setFormData({
-            ...formData,
-            mainImageUrl: reader.result as string,
-            newMainImageFile: file,
-          });
-        } else {
-          setFormData({
-            ...formData,
-            mainImageUrl: reader.result as string,
-            mainImageFile: file,
-          });
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData({
+        ...formData,
+        mainImageUrl: reader.result as string,
+        ...(account ? { newMainImageFile: file } : { mainImageFile: file }),
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
+  /** =============================================
+   * 🖼️ Upload nhiều ảnh phụ
+   * ============================================= */
   const handleMultipleImagesUpload = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
-      const newImages: GameAccountImage[] = [...(formData.images || [])];
-      const fileArray = Array.from(files);
-      let filesProcessed = 0;
+    if (!files?.length) return;
 
-      fileArray.forEach((file) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newImages.push({
-            imageId: Date.now() + filesProcessed,
-            imageUrl: reader.result as string,
-          });
-          filesProcessed++;
+    const fileArray = Array.from(files);
+    const newImages: GameAccountImage[] = [...(formData.images || [])];
+    let loaded = 0;
 
-          if (filesProcessed === fileArray.length) {
-            if (account) {
-              const existingFiles = formData.newAdditionalImageFiles || [];
-              setFormData({
-                ...formData,
-                images: newImages,
-                newAdditionalImageFiles: [...existingFiles, ...fileArray],
-              });
-            } else {
-              const existingFiles = formData.additionalImageFiles || [];
-              setFormData({
-                ...formData,
-                images: newImages,
-                additionalImageFiles: [...existingFiles, ...fileArray],
-              });
-            }
+    fileArray.forEach((file, idx) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        newImages.push({
+          imageId: Date.now() + idx,
+          imageUrl: reader.result as string,
+        });
+        loaded++;
+        if (loaded === fileArray.length) {
+          if (account) {
+            setFormData({
+              ...formData,
+              images: newImages,
+              newAdditionalImageFiles: [
+                ...(formData.newAdditionalImageFiles || []),
+                ...fileArray,
+              ],
+            });
+          } else {
+            setFormData({
+              ...formData,
+              images: newImages,
+              additionalImageFiles: [
+                ...(formData.additionalImageFiles || []),
+                ...fileArray,
+              ],
+            });
           }
-        };
-        reader.readAsDataURL(file);
-      });
-    }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
+  /** =============================================
+   * ❌ Xóa ảnh (phân biệt ảnh cũ / mới)
+   * ============================================= */
   const handleRemoveImage = (index: number) => {
-    const updatedImages =
-      formData.images?.filter(
-        (_: GameAccountImage, i: number) => i !== index
-      ) || [];
-
+    const updatedImages = formData.images?.filter((_, i) => i !== index) || [];
     const removedImage = formData.images?.[index];
 
+    if (!removedImage) return;
+
+    // Nếu account đã có (update)
     if (account) {
+      const deleteIds = [...(formData.deleteImageIds || [])];
+
+      // Nếu là ảnh cũ trong DB → add vào deleteImageIds
       if (
-        removedImage?.imageId &&
         typeof removedImage.imageId === "number" &&
         removedImage.imageId < Date.now() - 1000000
       ) {
-        const deleteIds = formData.deleteImageIds || [];
         if (!deleteIds.includes(removedImage.imageId)) {
           deleteIds.push(removedImage.imageId);
         }
@@ -115,15 +120,10 @@ export function useAccountForm(
           deleteImageIds: deleteIds,
         });
       } else {
+        // Nếu là ảnh mới (chưa upload lên)
         const updatedFiles = (formData.newAdditionalImageFiles || []).filter(
-          (_, i) => {
-            const fileIndex = (formData.images || [])
-              .filter((img) => img.imageId > Date.now() - 1000000)
-              .indexOf(removedImage!);
-            return i !== fileIndex;
-          }
+          (_, i) => i !== index
         );
-
         setFormData({
           ...formData,
           images: updatedImages,
@@ -131,12 +131,10 @@ export function useAccountForm(
         });
       }
     } else {
-      const updatedFiles = (formData.additionalImageFiles || []).slice();
-      const newImageIndex = (formData.images || []).indexOf(removedImage!);
-      if (newImageIndex !== -1 && newImageIndex < updatedFiles.length) {
-        updatedFiles.splice(newImageIndex, 1);
-      }
-
+      // Nếu là tài khoản mới
+      const updatedFiles = (formData.additionalImageFiles || []).filter(
+        (_, i) => i !== index
+      );
       setFormData({
         ...formData,
         images: updatedImages,
@@ -145,6 +143,9 @@ export function useAccountForm(
     }
   };
 
+  /** =============================================
+   * ↕️ Sắp xếp lại thứ tự ảnh
+   * ============================================= */
   const handleReorderImages = (newOrder: GameAccountImage[]) => {
     setFormData({
       ...formData,
@@ -152,9 +153,13 @@ export function useAccountForm(
     });
   };
 
+  /** =============================================
+   * 💾 Submit (tạo mới / cập nhật)
+   * ============================================= */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Kiểm tra bắt buộc
     if (!formData.gameCategoryId || !formData.description) {
       alert("Vui lòng điền đầy đủ thông tin bắt buộc");
       return;
@@ -171,114 +176,73 @@ export function useAccountForm(
     }
 
     setIsLoading(true);
-    try {
-      if (account) {
-        const formDataToSend = new FormData();
 
-        if (formData.gameCategoryId) {
-          formDataToSend.append(
-            "gameCategoryId",
-            formData.gameCategoryId.toString()
-          );
-        }
-        if (formData.originalPrice) {
-          formDataToSend.append(
-            "originalPrice",
-            formData.originalPrice.toString()
-          );
-        }
-        if (formData.currentPrice) {
-          formDataToSend.append(
-            "currentPrice",
-            formData.currentPrice.toString()
-          );
-        }
-        if (formData.description) {
-          formDataToSend.append("description", formData.description);
-        }
-        if (formData.status) {
-          formDataToSend.append("status", formData.status);
-        }
-        if (formData.typeAccount) {
-          formDataToSend.append("typeAccount", formData.typeAccount);
-        }
+    try {
+      /** ===================== UPDATE ===================== */
+      if (account) {
+        const fd = new FormData();
+        fd.append("gameCategoryId", String(formData.gameCategoryId || ""));
+        fd.append("originalPrice", String(formData.originalPrice || 0));
+        fd.append("currentPrice", String(formData.currentPrice || 0));
+        fd.append("description", formData.description || "");
+        fd.append("status", formData.status || "available");
+        fd.append("typeAccount", formData.typeAccount || "Normal");
 
         if (formData.newMainImageFile) {
-          formDataToSend.append("newMainImage", formData.newMainImageFile);
+          fd.append("newMainImage", formData.newMainImageFile);
         }
 
-        if (
-          formData.newAdditionalImageFiles &&
-          formData.newAdditionalImageFiles.length > 0
-        ) {
-          formData.newAdditionalImageFiles.forEach((file) => {
-            formDataToSend.append("newAdditionalImages", file);
-          });
+        if (formData.newAdditionalImageFiles?.length) {
+          formData.newAdditionalImageFiles.forEach((f) =>
+            fd.append("newAdditionalImages", f)
+          );
         }
 
-        if (formData.deleteImageIds && formData.deleteImageIds.length > 0) {
-          formData.deleteImageIds.forEach((imageId) => {
-            formDataToSend.append("deleteImageIds", imageId.toString());
-          });
+        // ✅ FIX: gửi deleteImageIds dạng JSON array
+        if (formData.deleteImageIds?.length) {
+          fd.append("deleteImageIds", JSON.stringify(formData.deleteImageIds));
         }
 
-        const response = await updateGameAccount(
-          account.gameAccountId,
-          formDataToSend
-        );
+        const response = await updateGameAccount(account.gameAccountId, fd);
 
         if (response.data) {
-          const updatedAccount: GameAccount = {
+          const updated: GameAccount = {
             ...account,
-            gameCategoryId: formData.gameCategoryId || account.gameCategoryId,
-            originalPrice: formData.originalPrice || account.originalPrice,
-            currentPrice: formData.currentPrice || account.currentPrice,
-            description: formData.description || account.description,
-            status: (formData.status as GameAccountStatus) || account.status,
-            typeAccount:
-              (formData.typeAccount as GameAccountType) || account.typeAccount,
-            mainImageUrl: formData.mainImageUrl || account.mainImageUrl,
-            images: formData.images || account.images,
+            gameCategoryId: formData.gameCategoryId!,
+            originalPrice: formData.originalPrice!,
+            currentPrice: formData.currentPrice!,
+            description: formData.description!,
+            status: formData.status as GameAccountStatus,
+            typeAccount: formData.typeAccount as GameAccountType,
+            mainImageUrl: formData.mainImageUrl!,
+            images: formData.images!,
           };
-
-          onSave(updatedAccount);
+          onSave(updated);
           onOpenChange(false);
           alert(response.message || "Cập nhật tài khoản thành công!");
         }
       } else {
-        const formDataToSend = new FormData();
 
-        formDataToSend.append(
-          "gameCategoryId",
-          formData.gameCategoryId?.toString() || ""
-        );
-        formDataToSend.append(
-          "originalPrice",
-          formData.originalPrice?.toString() || "0"
-        );
-        formDataToSend.append(
-          "currentPrice",
-          formData.currentPrice?.toString() || "0"
-        );
-        formDataToSend.append("description", formData.description || "");
-        formDataToSend.append("status", formData.status || "available");
-        formDataToSend.append("typeAccount", formData.typeAccount || "Normal");
+      /** ===================== CREATE ===================== */
+        const fd = new FormData();
+        fd.append("gameCategoryId", String(formData.gameCategoryId || ""));
+        fd.append("originalPrice", String(formData.originalPrice || 0));
+        fd.append("currentPrice", String(formData.currentPrice || 0));
+        fd.append("description", formData.description || "");
+        fd.append("status", formData.status || "available");
+        fd.append("typeAccount", formData.typeAccount || "Normal");
 
         if (formData.mainImageFile) {
-          formDataToSend.append("mainImage", formData.mainImageFile);
+          fd.append("mainImage", formData.mainImageFile);
         }
 
-        if (
-          formData.additionalImageFiles &&
-          formData.additionalImageFiles.length > 0
-        ) {
-          formData.additionalImageFiles.forEach((file) => {
-            formDataToSend.append("additionalImages", file);
-          });
+        if (formData.additionalImageFiles?.length) {
+          formData.additionalImageFiles.forEach((f) =>
+            fd.append("additionalImages", f)
+          );
         }
 
-        const response = await createGameAccount(formDataToSend);
-
+        const response = await createGameAccount(fd);
         if (response.data) {
           const newAccount = response.data as GameAccount;
           onSave(newAccount);
@@ -287,17 +251,18 @@ export function useAccountForm(
         }
       }
     } catch (error: any) {
-      console.error("Failed to save account:", error);
-      const errorMessage =
+      console.error("🚨 Failed to save account:", error);
+      const msg =
         error?.response?.message || error?.message || "Lỗi không xác định";
-      alert(
-        `${account ? "Cập nhật" : "Tạo"} tài khoản thất bại: ${errorMessage}`
-      );
+      alert(`${account ? "Cập nhật" : "Tạo"} tài khoản thất bại: ${msg}`);
     } finally {
       setIsLoading(false);
     }
   };
 
+  /** =============================================
+   * 🔙 Trả về các handler
+   * ============================================= */
   return {
     formData,
     setFormData,
