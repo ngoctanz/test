@@ -1,6 +1,6 @@
 import { apiFetch } from "./client";
 import type { ApiResponse } from "../types/api.type";
-import { saveTokensToLocal } from "@/lib/auth.client";
+import { saveTokensToLocal, getLocalRefreshToken } from "@/lib/auth.client";
 
 export interface LoginPayload {
   email: string;
@@ -16,9 +16,10 @@ export interface Profile {
   role: string;
 }
 
-/**
- * 🔹 LOGIN
- */
+/* ============================================================
+   🔹 LOGIN
+   -> Lưu cả access + refresh token fallback vào localStorage
+============================================================ */
 export async function login(payload: LoginPayload) {
   const res = await apiFetch<ApiResponse<{ tokens?: any }>>("/auth/login", {
     method: "POST",
@@ -33,9 +34,10 @@ export async function login(payload: LoginPayload) {
   return res;
 }
 
-/**
- * 🔹 REGISTER
- */
+/* ============================================================
+   🔹 REGISTER
+   -> Hành vi giống login
+============================================================ */
 export async function register(payload: RegisterPayload) {
   const res = await apiFetch<ApiResponse<{ tokens?: any }>>("/auth/register", {
     method: "POST",
@@ -50,19 +52,29 @@ export async function register(payload: RegisterPayload) {
   return res;
 }
 
-/**
- * 🔹 PROFILE
- */
+/* ============================================================
+   🔹 PROFILE
+   -> Sử dụng apiFetch tự động thử cookie -> local -> refresh
+============================================================ */
 export async function profile() {
   return apiFetch<ApiResponse<Profile>>("/auth/profile", { method: "GET" });
 }
 
-/**
- * 🔹 REFRESH TOKEN
- */
+/* ============================================================
+   🔹 REFRESH TOKEN
+   -> Ưu tiên cookie, fallback header Bearer nếu cookie bị xoá
+============================================================ */
 export async function refresh() {
+  const localRefreshToken = getLocalRefreshToken();
+  const headers: Record<string, string> = {};
+
+  if (localRefreshToken) {
+    headers["Authorization"] = `Bearer ${localRefreshToken}`;
+  }
+
   const res = await apiFetch<ApiResponse<{ tokens?: any }>>("/auth/refresh", {
     method: "POST",
+    headers,
   });
 
   if (res.data?.tokens?.accessToken) {
@@ -74,9 +86,10 @@ export async function refresh() {
   return res;
 }
 
-/**
- * 🔹 LOGOUT
- */
+/* ============================================================
+   🔹 LOGOUT
+   -> Xóa cookie + localStorage
+============================================================ */
 export async function logout() {
   return apiFetch<ApiResponse<null>>("/auth/logout", { method: "POST" });
 }

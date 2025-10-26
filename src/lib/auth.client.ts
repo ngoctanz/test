@@ -36,14 +36,21 @@ export function saveTokensToLocal(tokens: {
 }
 
 /**
- * Lấy token fallback (nếu có)
+ * Lấy access token fallback (nếu có)
  */
 export function getLocalAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEYS.ACCESS);
 }
 
 /**
- * Xóa token fallback
+ * 🔹 Lấy refresh token fallback (nếu có)
+ */
+export function getLocalRefreshToken(): string | null {
+  return localStorage.getItem(TOKEN_KEYS.REFRESH);
+}
+
+/**
+ * Xóa toàn bộ token fallback
  */
 export function clearLocalTokens() {
   localStorage.removeItem(TOKEN_KEYS.ACCESS);
