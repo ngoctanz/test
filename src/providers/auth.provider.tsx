@@ -63,6 +63,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (isLoading || !user) return;
     const currentPath = window.location.pathname;
     if (user.role === "ADMIN" && currentPath === "/") {
+      console.log("Auto-redirecting ADMIN to /admin");
       router.replace("/admin");
     }
   }, [user, isLoading, router]);
