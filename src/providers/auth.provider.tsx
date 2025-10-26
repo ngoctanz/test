@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import * as authApi from "@/apis/auth.api";
 import { AuthContext, type AuthContextType } from "@/contexts/auth.context";
 import type { Profile } from "@/apis/auth.api";
+import { clearLocalTokens, saveTokensToLocal } from "@/lib/auth.client";
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -28,7 +29,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const profile = res?.data || null;
       setUser(profile);
       return profile;
-    } catch (err: any) {
+    } catch (err) {
+      console.warn("❌ Fetch profile failed:", err);
       setUser(null);
       return null;
     }
@@ -47,13 +49,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     async (email: string, password: string): Promise<void> => {
       setIsLoading(true);
       try {
-        await authApi.login({ email, password });
+        const res = await authApi.login({ email, password });
 
+        // ✅ Nếu server trả tokens → lưu fallback (cho Safari iOS)
+        if (res.data?.tokens) {
+          saveTokensToLocal(res.data.tokens);
+        }
+
+        // ✅ Sau khi lưu xong → refetch profile
         const userData = await fetchUserProfile();
 
         if (userData) {
           const targetPath = userData.role === "ADMIN" ? "/admin" : "/";
           router.replace(targetPath);
+        } else {
+          router.replace("/login");
         }
       } catch (error) {
         console.error("Login error:", error);
@@ -69,8 +79,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     async (email: string, password: string): Promise<void> => {
       setIsLoading(true);
       try {
-        await authApi.register({ email, password });
+        const res = await authApi.register({ email, password });
+
+        // ✅ Lưu token fallback nếu backend trả
+        if (res.data?.tokens) {
+          saveTokensToLocal(res.data.tokens);
+        }
+
+        // ✅ Sau khi đăng ký thì đăng nhập luôn
         await login(email, password);
+      } catch (error) {
+        console.error("Register error:", error);
       } finally {
         setIsLoading(false);
       }
@@ -82,35 +101,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
-      // Gọi API logout để xóa cookies backend
+      // ✅ Gọi API logout để xóa cookies backend
       await authApi.logout();
     } catch {
       /* ignore */
     } finally {
-      // Xóa user state
+      // ✅ Xóa token local fallback
+      clearLocalTokens();
+
+      // ✅ Xóa user state
       setUser(null);
       router.replace("/login");
-
-      // // Xóa tất cả cookies frontend
-      // const cookies = document.cookie.split(";");
-      // for (let i = 0; i < cookies.length; i++) {
-      //   const cookie = cookies[i];
-      //   const eqPos = cookie.indexOf("=");
-      //   const name =
-      //     eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-
-      //   // Xóa cookie với nhiều cấu hình path/domain
-      //   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-      //   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
-      //   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.${window.location.hostname}`;
-      // }
-
-      // // Clear localStorage và sessionStorage nếu có
-      // localStorage.clear();
-      // sessionStorage.clear();
-
-      // lastRedirectRef.current = "/";
-
       setIsLoading(false);
     }
   }, [router]);
