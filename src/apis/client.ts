@@ -124,7 +124,6 @@ export async function apiFetch<T = any>(
   const storedToken = TokenStorage.getAccessToken();
   let res = await makeRequest(storedToken || undefined);
 
-  // Auto refresh nếu 401
   if (res.status === 401 && !path.includes("/auth/refresh")) {
     try {
       const newToken = await refreshToken();
@@ -132,9 +131,6 @@ export async function apiFetch<T = any>(
     } catch (refreshError) {
       console.warn("Refresh failed:", refreshError);
       TokenStorage.clearTokens();
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
-      }
       throw refreshError;
     }
   }
