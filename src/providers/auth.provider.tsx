@@ -30,7 +30,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(profile);
       return profile;
     } catch (err: any) {
-      console.warn("❌ Fetch profile failed:", err);
+      console.warn("Fetch profile failed:", err);
 
       // nếu cookie fail (401) mà vẫn có token local => thử lại
       const localToken = localStorage.getItem("accessToken");
@@ -57,6 +57,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsLoading(false);
     })();
   }, [fetchUserProfile]);
+
+  /** ====================== AUTO REDIRECT BASED ON ROLE ====================== */
+  useEffect(() => {
+    if (isLoading || !user) return;
+    const currentPath = window.location.pathname;
+    if (user.role === "ADMIN" && currentPath === "/") {
+      router.replace("/admin");
+    }
+  }, [user, isLoading, router]);
 
   /** ====================== LOGIN ====================== */
   const login = useCallback(
