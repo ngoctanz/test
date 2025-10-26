@@ -23,27 +23,36 @@ function buildQuery(q?: Record<string, any>): string {
   return s ? `?${s}` : "";
 }
 
+/**
+ * 🔁 Refresh token khi access token hết hạn
+ */
 async function refreshToken(): Promise<void> {
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: "POST",
     credentials: "include",
   });
+
   if (!res.ok) throw new Error("No valid refresh token");
+
   const body = await res.json();
 
-  // Nếu response body có token (fallback cho iOS)
-  if (body?.data?.accessToken) {
+  // ✅ Nếu response body có token (fallback cho iOS)
+  if (body?.data?.tokens?.accessToken) {
     saveTokensToLocal({
-      accessToken: body.data.accessToken,
+      accessToken: body.data.tokens.accessToken,
     });
   }
 }
 
+/**
+ * ✅ Xử lý response
+ */
 async function handleResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get("content-type") || "";
   const body = contentType.includes("application/json")
     ? await res.json()
     : await res.text();
+
   if (!res.ok) {
     const err = new Error(body?.message || res.statusText || "Request failed");
     (err as any).status = res.status;
@@ -53,6 +62,9 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return body as T;
 }
 
+/**
+ * ⚙️ Gọi API kèm cookie hoặc header fallback
+ */
 export async function apiFetch<T = any>(
   path: string,
   options: FetchOptions = {}
@@ -62,6 +74,12 @@ export async function apiFetch<T = any>(
 
   const cookieSupported = canUseCookies();
   const localAccessToken = getLocalAccessToken();
+
+  console.log(
+    cookieSupported
+      ? "🍪 Using cookie-based auth"
+      : "📦 Using localStorage-based auth (Safari fallback)"
+  );
 
   const makeRequest = (useLocalToken = false): Promise<Response> => {
     const headers: Record<string, string> = {
@@ -82,7 +100,7 @@ export async function apiFetch<T = any>(
 
   let res = await makeRequest(false);
 
-  // Nếu cookie-based fail và iOS không dùng được cookie → thử token local
+  // 🔁 Nếu cookie-based fail và Safari không dùng được cookie → thử token local
   if (res.status === 401 && !path.includes("/auth/refresh")) {
     if (!cookieSupported && localAccessToken) {
       console.warn("🔄 Fallback to localStorage token...");
@@ -101,45 +119,9 @@ export async function apiFetch<T = any>(
   return handleResponse<T>(res);
 }
 
-// ==== LOGIN / REGISTER / PROFILE / LOGOUT ====
-
-export async function login(email: string, password: string) {
-  const res = await apiFetch<{
-    message: string;
-    tokens?: { accessToken: string; refreshToken: string };
-  }>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-
-  // Nếu Safari không set được cookie → lưu fallback
-  if (res.tokens) {
-    saveTokensToLocal(res.tokens);
-  }
-
-  return res;
-}
-
-export async function register(email: string, password: string) {
-  const res = await apiFetch<{
-    message: string;
-    tokens?: { accessToken: string; refreshToken: string };
-  }>("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (res.tokens) {
-    saveTokensToLocal(res.tokens);
-  }
-
-  return res;
-}
-
-export async function getProfile() {
-  return apiFetch("/auth/profile", { method: "GET" });
-}
-
+/**
+ * 🚪 LOGOUT
+ */
 export async function logout(): Promise<void> {
   try {
     await apiFetch("/auth/logout", { method: "POST" });

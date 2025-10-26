@@ -1,5 +1,6 @@
 import { apiFetch } from "./client";
 import type { ApiResponse } from "../types/api.type";
+import { saveTokensToLocal } from "@/lib/auth.client";
 
 export interface LoginPayload {
   email: string;
@@ -15,30 +16,67 @@ export interface Profile {
   role: string;
 }
 
+/**
+ * 🔹 LOGIN
+ */
 export async function login(payload: LoginPayload) {
-  return apiFetch<ApiResponse<null>>("/auth/login", {
+  const res = await apiFetch<ApiResponse<{ tokens?: any }>>("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+
+  if (res.data?.tokens) {
+    saveTokensToLocal(res.data.tokens);
+  }
+
+  return res;
 }
 
+/**
+ * 🔹 REGISTER
+ */
 export async function register(payload: RegisterPayload) {
-  return apiFetch<ApiResponse<null>>("/auth/register", {
+  const res = await apiFetch<ApiResponse<{ tokens?: any }>>("/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+
+  if (res.data?.tokens) {
+    saveTokensToLocal(res.data.tokens);
+  }
+
+  return res;
 }
 
+/**
+ * 🔹 PROFILE
+ */
 export async function profile() {
   return apiFetch<ApiResponse<Profile>>("/auth/profile", { method: "GET" });
 }
 
+/**
+ * 🔹 REFRESH TOKEN
+ */
 export async function refresh() {
-  return apiFetch<ApiResponse<null>>("/auth/refresh", { method: "POST" });
+  const res = await apiFetch<ApiResponse<{ tokens?: any }>>("/auth/refresh", {
+    method: "POST",
+  });
+
+  if (res.data?.tokens?.accessToken) {
+    saveTokensToLocal({
+      accessToken: res.data.tokens.accessToken,
+    });
+  }
+
+  return res;
 }
 
+/**
+ * 🔹 LOGOUT
+ */
 export async function logout() {
   return apiFetch<ApiResponse<null>>("/auth/logout", { method: "POST" });
 }
