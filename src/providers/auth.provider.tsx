@@ -60,10 +60,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   /** ====================== AUTO REDIRECT BASED ON ROLE ====================== */
   useEffect(() => {
+    console.log("Checking auto-redirect based on role...");
     if (isLoading || !user) return;
     const currentPath = window.location.pathname;
     if (user.role === "ADMIN" && currentPath === "/") {
-      console.log("Auto-redirecting ADMIN to /admin");
       router.replace("/admin");
     }
   }, [user, isLoading, router]);
