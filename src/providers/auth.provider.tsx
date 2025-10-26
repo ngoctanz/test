@@ -29,8 +29,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const profile = res?.data || null;
       setUser(profile);
       return profile;
-    } catch (err) {
+    } catch (err: any) {
       console.warn("❌ Fetch profile failed:", err);
+
+      // 🧠 nếu cookie fail (401) mà vẫn có token local => thử lại
+      const localToken = localStorage.getItem("accessToken");
+      if (err?.status === 401 && localToken) {
+        console.log("🔄 Retrying fetchUserProfile with local token...");
+        try {
+          const res2 = await authApi.profile(); // apiFetch() tự thêm Bearer
+          const profile2 = res2?.data || null;
+          setUser(profile2);
+          return profile2;
+        } catch {
+          setUser(null);
+        }
+      }
+
       setUser(null);
       return null;
     }

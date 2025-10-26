@@ -19,42 +19,16 @@ function buildQuery(q?: Record<string, any>): string {
       ? v.forEach((item) => params.append(k, String(item)))
       : params.append(k, String(v));
   });
-  const s = params.toString();
-  return s ? `?${s}` : "";
+  return params.toString() ? `?${params.toString()}` : "";
 }
 
-/**
- * 🔁 Refresh token khi access token hết hạn
- */
-async function refreshToken(): Promise<void> {
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
-    method: "POST",
-    credentials: "include",
-  });
-
-  if (!res.ok) throw new Error("No valid refresh token");
-
-  const body = await res.json();
-
-  // ✅ Nếu response body có token (fallback cho iOS)
-  if (body?.data?.tokens?.accessToken) {
-    saveTokensToLocal({
-      accessToken: body.data.tokens.accessToken,
-    });
-  }
-}
-
-/**
- * ✅ Xử lý response
- */
 async function handleResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get("content-type") || "";
   const body = contentType.includes("application/json")
     ? await res.json()
     : await res.text();
-
   if (!res.ok) {
-    const err = new Error(body?.message || res.statusText || "Request failed");
+    const err = new Error(body?.message || res.statusText);
     (err as any).status = res.status;
     (err as any).body = body;
     throw err;
@@ -62,9 +36,18 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-/**
- * ⚙️ Gọi API kèm cookie hoặc header fallback
- */
+async function refreshToken(): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("No valid refresh token");
+  const body = await res.json();
+  if (body?.data?.tokens?.accessToken) {
+    saveTokensToLocal({ accessToken: body.data.tokens.accessToken });
+  }
+}
+
 export async function apiFetch<T = any>(
   path: string,
   options: FetchOptions = {}
@@ -75,58 +58,50 @@ export async function apiFetch<T = any>(
   const cookieSupported = canUseCookies();
   const localAccessToken = getLocalAccessToken();
 
-  console.log(
-    cookieSupported
-      ? "🍪 Using cookie-based auth"
-      : "📦 Using localStorage-based auth (Safari fallback)"
-  );
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(rest.headers as Record<string, string>),
+  };
 
-  const makeRequest = (useLocalToken = false): Promise<Response> => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(rest.headers as Record<string, string>),
-    };
-
-    if (useLocalToken && localAccessToken) {
-      headers["Authorization"] = `Bearer ${localAccessToken}`;
+  const doFetch = (useLocal = false) => {
+    const h = { ...headers };
+    if (useLocal && localAccessToken) {
+      h["Authorization"] = `Bearer ${localAccessToken}`;
     }
-
     return fetch(url, {
       ...rest,
-      headers,
+      headers: h,
       credentials: cookieSupported ? "include" : "omit",
     });
   };
 
-  let res = await makeRequest(false);
+  let res = await doFetch(false);
 
-  // 🔁 Nếu cookie-based fail và Safari không dùng được cookie → thử token local
+  // nếu cookie fail (401) -> thử local token
+  if (res.status === 401 && localAccessToken) {
+    console.warn("🍪 Cookie failed → retry with localStorage token");
+    res = await doFetch(true);
+  }
+
+  // nếu vẫn fail -> thử refresh
   if (res.status === 401 && !path.includes("/auth/refresh")) {
-    if (!cookieSupported && localAccessToken) {
-      console.warn("🔄 Fallback to localStorage token...");
-      res = await makeRequest(true);
-    } else {
-      try {
-        await refreshToken();
-        res = await makeRequest(false);
-      } catch (err) {
-        console.warn("Refresh token failed:", err);
-        throw err;
-      }
+    try {
+      await refreshToken();
+      res = await doFetch(false);
+    } catch (e) {
+      console.warn("🔁 Refresh failed:", e);
+      throw e;
     }
   }
 
   return handleResponse<T>(res);
 }
 
-/**
- * 🚪 LOGOUT
- */
 export async function logout(): Promise<void> {
   try {
     await apiFetch("/auth/logout", { method: "POST" });
-  } catch (error) {
-    console.error("Logout API failed:", error);
+  } catch (e) {
+    console.error("Logout error:", e);
   } finally {
     clearLocalTokens();
     if (typeof window !== "undefined") {
